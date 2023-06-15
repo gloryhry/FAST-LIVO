@@ -1,5 +1,7 @@
 # FAST-LIVO
 
+Add Support for Livox Mid360.
+
 ## Fast and Tightly-coupled Sparse-Direct LiDAR-Inertial-Visual Odometry
 
 ## 1. Introduction
@@ -57,6 +59,17 @@ OpenCV>=3.2, Follow [Opencv Installation](http://opencv.org/).
 git clone https://github.com/strasdat/Sophus.git
 cd Sophus
 git checkout a621ff
+```
+replace the code in `so2.cpp`, and save file:
+```C++
+// Line 32,33
+unit_complex_.real() = 1.;
+unit_complex_.imag() = 0.;
+// replace into 
+unit_complex_ = std::complex<double>(1,0);
+```
+
+```bash
 mkdir build && cd build && cmake ..
 make
 sudo make install
@@ -66,6 +79,15 @@ sudo make install
 
 Vikit contains camera models, some math and interpolation functions that we need. Vikit is a catkin project, therefore, download it into your catkin workspace source folder.
 
+- for Opencv4.X version, the solution is to update the syntax from CV_... to cv::..., specifically:
+  - In .cpp files located at `.../rpg_vikit/vikit_common/src`
+  - In `homography.cpp` (line 48)
+    - `CV_RANSAC` -> `cv::RANSAC`
+  - In `pinhole_camera.cpp` (line 112)
+    - `CV_INTER_LINEAR` -> `cv::INTER_LINEAR`
+  - In `img_align.cpp` (lines 237 & 437)
+    - `CV_WINDOW_AUTOSIZE` -> `cv::WINDOW_AUTOSIZE`
+
 ```bash
 cd catkin_ws/src
 git clone https://github.com/uzh-rpg/rpg_vikit.git
@@ -74,6 +96,20 @@ git clone https://github.com/uzh-rpg/rpg_vikit.git
 ### 2.5 **livox_ros_driver**
 
 Follow [livox_ros_driver Installation](https://github.com/Livox-SDK/livox_ros_driver).
+
+### 2.6 **livox_ros_driver2**
+
+Follow [livox_ros_driver2 Installation](https://github.com/Livox-SDK/livox_ros_driver2).
+
+### 2.7 vision_opencv(Recommond)
+
+The version of OpenCV may be incompatible with cv_bridge. It is recommended to recompile cv_bridge within this workspace.
+
+```bash
+cd ~/catkin_ws/src
+https://github.com/ros-perception/vision_opencv.git
+git checkout $ROS_DISTRO
+```
 
 ## 3. Build
 
