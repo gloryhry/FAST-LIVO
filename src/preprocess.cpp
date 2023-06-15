@@ -45,6 +45,12 @@ void Preprocess::process(const livox_ros_driver::CustomMsg::ConstPtr &msg, Point
   *pcl_out = pl_surf;
 }
 
+void Preprocess::process(const livox_ros_driver2::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
+{  
+  mid360_handler(msg);
+  *pcl_out = pl_surf;
+}
+
 void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
 {
   switch (lidar_type)
@@ -137,6 +143,97 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
             || (msg->points[i].x * msg->points[i].x + msg->points[i].y * msg->points[i].y < blind)
             || (msg->points[i].line > N_SCANS)
             || ((msg->points[i].tag & 0x30) != RETURN0AND1))
+        {
+            continue;
+        }
+
+        effect_ind ++;
+
+        if(effect_ind % point_filter_num == 0)
+        {
+            pl_full[i].x = msg->points[i].x;
+            pl_full[i].y = msg->points[i].y;
+            pl_full[i].z = msg->points[i].z;
+            pl_full[i].intensity = msg->points[i].reflectivity;
+            pl_full[i].curvature = msg->points[i].offset_time / float(1000000); //use curvature as time of each laser points
+            pl_surf.push_back(pl_full[i]);
+        }
+    }
+  }
+  // printf("feature extraction time: %lf \n", omp_get_wtime()-t1);
+}
+
+void Preprocess::mid360_handler(const livox_ros_driver2::CustomMsg::ConstPtr &msg)
+{
+  pl_surf.clear();
+  pl_corn.clear();
+  pl_full.clear();
+  double t1 = omp_get_wtime();
+  uint plsize = msg->point_num;
+  uint effect_ind = 0;
+
+  pl_corn.reserve(plsize);
+  pl_surf.reserve(plsize);
+  pl_full.resize(plsize);
+
+  for(int i=0; i<N_SCANS; i++)
+  {
+    pl_buff[i].clear();
+    pl_buff[i].reserve(plsize);
+  }
+
+  if (feature_enabled)
+  {
+    for(uint i=1; i<plsize; i++)
+    {
+        if((abs(msg->points[i].x - msg->points[i-1].x) < 1e-8) 
+            || (abs(msg->points[i].y - msg->points[i-1].y) < 1e-8)
+            || (abs(msg->points[i].z - msg->points[i-1].z) < 1e-8)
+            || (msg->points[i].x * msg->points[i].x + msg->points[i].y * msg->points[i].y < blind)
+            || (msg->points[i].line > N_SCANS))
+        {
+            continue;
+        }
+
+        pl_full[i].x = msg->points[i].x;
+        pl_full[i].y = msg->points[i].y;
+        pl_full[i].z = msg->points[i].z;
+        pl_full[i].intensity = msg->points[i].reflectivity;
+        pl_full[i].curvature = msg->points[i].offset_time / float(1000000); //use curvature as time of each laser points
+        pl_buff[msg->points[i].line].push_back(pl_full[i]);
+    }
+
+    for(int j=0; j<N_SCANS; j++)
+    {
+      // printf("pl_buff[j].size(): %d \n", pl_buff[j].size());
+      if(pl_buff[j].size() <= 5) continue;
+      pcl::PointCloud<PointType> &pl = pl_buff[j];
+      plsize = pl.size();
+      vector<orgtype> &types = typess[j];
+      types.clear();
+      types.resize(plsize);
+      plsize--;
+      for(uint i=0; i<plsize; i++)
+      {
+        types[i].range = pl[i].x * pl[i].x + pl[i].y * pl[i].y;
+        vx = pl[i].x - pl[i + 1].x;
+        vy = pl[i].y - pl[i + 1].y;
+        vz = pl[i].z - pl[i + 1].z;
+        types[i].dista = vx * vx + vy * vy + vz * vz;
+      }
+      types[plsize].range = pl[plsize].x * pl[plsize].x + pl[plsize].y * pl[plsize].y;
+      give_feature(pl, types);
+    }
+  }
+  else
+  {
+    for(uint i=1; i<plsize; i++)
+    {
+        if((abs(msg->points[i].x - msg->points[i-1].x) < 1e-8) 
+            || (abs(msg->points[i].y - msg->points[i-1].y) < 1e-8)
+            || (abs(msg->points[i].z - msg->points[i-1].z) < 1e-8)
+            || (msg->points[i].x * msg->points[i].x + msg->points[i].y * msg->points[i].y < blind)
+            || (msg->points[i].line > N_SCANS))
         {
             continue;
         }
@@ -833,7 +930,7 @@ int Preprocess::plane_judge(const PointCloudXYZI &pl, vector<orgtype> &types, ui
     return 0;
   }
 
-  if(lidar_type==AVIA)
+  if(lidar_type==AVIA || lidar_type==Mid360)
   {
     double dismax_mid = disarr[0]/disarr[disarrsize/2];
     double dismid_min = disarr[disarrsize/2]/disarr[disarrsize-2];

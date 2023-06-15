@@ -453,6 +453,25 @@ void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg)
     sig_buffer.notify_all();
 }
 
+void livox2_pcl_cbk(const livox_ros_driver2::CustomMsg::ConstPtr &msg) 
+{
+    mtx_buffer.lock();
+    if (msg->header.stamp.toSec() < last_timestamp_lidar)
+    {
+        ROS_ERROR("lidar loop back, clear buffer");
+        lidar_buffer.clear();
+    }
+    printf("[ INFO ]: get point cloud at time: %.6f.\n", msg->header.stamp.toSec());
+    PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
+    p_pre->process(msg, ptr);
+    lidar_buffer.push_back(ptr);
+    time_buffer.push_back(msg->header.stamp.toSec());
+    last_timestamp_lidar = msg->header.stamp.toSec();
+
+    mtx_buffer.unlock();
+    sig_buffer.notify_all();
+}
+
 void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) 
 {
     publish_count ++;
@@ -472,7 +491,7 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     last_timestamp_imu = timestamp;
 
     imu_buffer.push_back(msg);
-    // cout<<"got imu: "<<timestamp<<" imu size "<<imu_buffer.size()<<endl;
+    // cout<<"got imu: "<<fixed<<setprecision(4)<<timestamp<<" imu size "<<imu_buffer.size()<<endl;
     mtx_buffer.unlock();
     sig_buffer.notify_all();
 }
@@ -494,6 +513,7 @@ void img_cbk(const sensor_msgs::ImageConstPtr& msg)
         return;
     }
     printf("[ INFO ]: get img at time: %.6f.\n", msg->header.stamp.toSec());
+    std::cout << "ROS Time now:" << ros::Time::now() << std::endl;
     if (msg->header.stamp.toSec() < last_timestamp_img)
     {
         ROS_ERROR("img loop back, clear buffer");
@@ -727,6 +747,7 @@ void publish_frame_world_rgb(const ros::Publisher & pubLaserCloudFullRes, lidar_
             pointRGB.y =  pcl_wait_pub->points[i].y;
             pointRGB.z =  pcl_wait_pub->points[i].z;
             V3D p_w(pcl_wait_pub->points[i].x, pcl_wait_pub->points[i].y, pcl_wait_pub->points[i].z);
+            V3D pf(lidar_selector->new_frame_->w2f(p_w)); if(pf[2]<0) continue;
             V2D pc(lidar_selector->new_frame_->w2c(p_w));
             if (lidar_selector->new_frame_->cam_->isInFrame(pc.cast<int>(),0))
             {
@@ -1133,9 +1154,30 @@ int main(int argc, char** argv)
     cout<<"debug:"<<debug<<" MIN_IMG_COUNT: "<<MIN_IMG_COUNT<<endl;
     pcl_wait_pub->clear();
     // pcl_visual_wait_pub->clear();
-    ros::Subscriber sub_pcl = p_pre->lidar_type == AVIA ? \
-        nh.subscribe(lid_topic, 200000, livox_pcl_cbk) : \
-        nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
+    // ros::Subscriber sub_pcl = p_pre->lidar_type == AVIA ? \
+    //     nh.subscribe(lid_topic, 200000, livox_pcl_cbk) : \
+    //     nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
+    ros::Subscriber sub_pcl;
+    switch (p_pre->lidar_type)
+    {
+    case AVIA:
+        sub_pcl = nh.subscribe(lid_topic, 200000, livox_pcl_cbk);
+        break;
+
+    case Mid360:
+        sub_pcl = nh.subscribe(lid_topic, 200000, livox2_pcl_cbk);
+        break;
+    
+    case OUST64:
+        sub_pcl = nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
+        break;
+    case VELO16:
+        sub_pcl = nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
+        break;
+    default:
+        ROS_ERROR("not support lidar type");
+        break;
+    }
     ros::Subscriber sub_imu = nh.subscribe(imu_topic, 200000, imu_cbk);
     ros::Subscriber sub_img = nh.subscribe(img_topic, 200000, img_cbk);
     image_transport::Publisher img_pub = it.advertise("/rgb_img", 1);

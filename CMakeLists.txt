@@ -53,6 +53,7 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_ros
   tf
   livox_ros_driver
+  livox_ros_driver2
   message_generation
   eigen_conversions
   vikit_common
@@ -91,7 +92,7 @@ generate_messages(
 )
 
 catkin_package(
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs message_runtime cv_bridge image_transport vikit_common vikit_ros
+  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs message_runtime cv_bridge image_transport vikit_common vikit_ros livox_ros_driver livox_ros_driver2
   DEPENDS EIGEN3 PCL OpenCV Sophus
   INCLUDE_DIRS include
 )
